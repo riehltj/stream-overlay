@@ -62,16 +62,19 @@ function playAnimation(file) {
  **************************************/
 function addTouchdownToScoreboard(user) {
     console.log(`${user} scored a TD!`);
-    scoreboard.score += 7;
+    scoreboard.score += 6;          // 6 points immediately
     renderScoreboard();
-    playAnimation('touchdown.mp4'); // replace with your file
+    playAnimation('touchdown.mp4'); // TD animation immediately
 }
 
 function addFieldGoalToScoreboard(user, amount) {
     console.log(`${user} scored a FG!`);
-    scoreboard.score += 3;
-    renderScoreboard();
-    playAnimation('fieldgoal.mp4'); // replace with your file
+
+    setTimeout(() => {
+        scoreboard.score += 3;          // add points after 3s
+        renderScoreboard();
+        playAnimation('fieldgoal.mp4'); // play FG animation after 3s
+    }, 3000);
 }
 
 function renderScoreboard() {
