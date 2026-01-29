@@ -2,9 +2,10 @@
  * CONFIG
  **************************************/
 const MAX_GAMES = 24;
-const GAME_ROTATION_INTERVAL = 15000; // rotation every 15s
-const SCORE_TICK_INTERVAL = 5000;     // random score every 5s
-const CLOCK_TICK_INTERVAL = 1000;     // 1s
+const GAME_ROTATION_INTERVAL = 15000; // rotate every 15s
+const SCORE_TICK_INTERVAL = 5000;     // random scores
+const CLOCK_TICK_INTERVAL = 1000;     // 1 second
+const STREAMLABS_KEY = '6YI3uu0HWSvSoIQp0PznBnw8RMu4OcZFVMSemMUj';
 const TICK_PROBABILITY = { fieldGoal: 0.2, touchdown: 0.1 };
 
 /**************************************
@@ -15,9 +16,30 @@ let games = [
     { teamA: "PixelFox", teamB: "AstroCat", scoreA: 10, scoreB: 10, quarter: 3, timeRemaining: 522, status: "LIVE" },
     { teamA: "FrostyMike", teamB: "BlueNova", scoreA: 14, scoreB: 24, status: "FINAL" }
 ];
-
 let visibleStartIndex = 0;
 let knownNames = ["TylerFPS", "CozyBear", "PixelWitch", "NightOwl", "FrostyMike", "AstroCat", "BlueNova"];
+
+let scoreboard = { score: 0 };
+
+/**************************************
+ * STREAMLABS WEBSOCKET
+ **************************************/
+const ws = new WebSocket(`wss://sockets.streamlabs.com?token=${STREAMLABS_KEY}`);
+
+ws.onopen = () => console.log('Connected to Streamlabs WebSocket!');
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (!data.for) return;
+
+    if (data.for === 'subscriber') {
+        const user = data.message[0]?.name || "Anonymous";
+        addTouchdownToScoreboard(user);
+    }
+    if (data.for === 'donation') {
+        const user = data.message[0]?.name || "Anonymous";
+        addFieldGoalToScoreboard(user, data.message[0]?.amount || 0);
+    }
+};
 
 /**************************************
  * HELPERS
@@ -28,18 +50,44 @@ function formatTime(seconds) {
     return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+function playAnimation(file) {
+    const vid = document.getElementById('animation');
+    if (!vid) return;
+    vid.src = file;
+    vid.play();
+}
+
 /**************************************
- * RENDER FUNCTION
+ * SCOREBOARD FUNCTIONS
+ **************************************/
+function addTouchdownToScoreboard(user) {
+    console.log(`${user} scored a TD!`);
+    scoreboard.score += 7;
+    renderScoreboard();
+    playAnimation('touchdown.mp4'); // replace with your file
+}
+
+function addFieldGoalToScoreboard(user, amount) {
+    console.log(`${user} scored a FG!`);
+    scoreboard.score += 3;
+    renderScoreboard();
+    playAnimation('fieldgoal.mp4'); // replace with your file
+}
+
+function renderScoreboard() {
+    const elem = document.getElementById('scoreboard');
+    if (!elem) return;
+    elem.textContent = `Score: ${scoreboard.score}`;
+}
+
+/**************************************
+ * TICKER RENDER
  **************************************/
 function renderTicker() {
     for (let i = 0; i < 3; i++) {
         const slot = document.getElementById(`game-${i}`);
         const game = games[(visibleStartIndex + i) % games.length];
-
-        if (!game) {
-            slot.innerHTML = "";
-            continue;
-        }
+        if (!game) { slot.innerHTML = ""; continue; }
 
         const scoreLine = `
       <div class="game-score">
@@ -62,17 +110,13 @@ function renderTicker() {
 function tickGames() {
     games.forEach(game => {
         if (game.status !== "LIVE") return;
-
         if (!game.timeRemaining) game.timeRemaining = 300;
+
         game.timeRemaining -= 1;
 
         if (game.timeRemaining <= 0) {
-            if (game.quarter < 4) {
-                game.quarter += 1;
-                game.timeRemaining = 300;
-            } else {
-                game.status = "FINAL";
-            }
+            if (game.quarter < 4) { game.quarter += 1; game.timeRemaining = 300; }
+            else game.status = "FINAL";
         }
     });
 
@@ -82,7 +126,6 @@ function tickGames() {
 function randomScoreUpdates() {
     games.forEach(game => {
         if (game.status !== "LIVE") return;
-
         const r = Math.random();
         if (r < TICK_PROBABILITY.touchdown) {
             if (Math.random() < 0.5) game.scoreA += 7;
@@ -97,29 +140,20 @@ function randomScoreUpdates() {
 }
 
 /**************************************
- * ROTATION WITH FADE/SLIDE
+ * ROTATION WITH ANIMATION
  **************************************/
 function rotateGames() {
     if (games.length <= 3) return;
-
     const slots = [0, 1, 2].map(i => document.getElementById(`game-${i}`));
-
-    slots.forEach(slot => slot.classList.add("fade-out"));
+    slots.forEach(s => s.classList.add("fade-out"));
 
     setTimeout(() => {
         visibleStartIndex += 3;
         if (visibleStartIndex >= games.length) visibleStartIndex = 0;
-
         renderTicker();
 
-        slots.forEach(slot => {
-            slot.classList.remove("fade-out");
-            slot.classList.add("fade-in");
-        });
-
-        setTimeout(() => {
-            slots.forEach(slot => slot.classList.remove("fade-in"));
-        }, 500);
+        slots.forEach(s => { s.classList.remove("fade-out"); s.classList.add("fade-in"); });
+        setTimeout(() => slots.forEach(s => s.classList.remove("fade-in")), 500);
     }, 500);
 }
 
@@ -140,7 +174,7 @@ function addNewGameFromNames(nameA, nameB) {
     });
 }
 
-// simulate adding new games every 15s
+// simulate adding new games from known names
 setInterval(() => {
     if (games.length < MAX_GAMES && knownNames.length >= 2) {
         const names = [...knownNames].sort(() => 0.5 - Math.random());
@@ -152,6 +186,7 @@ setInterval(() => {
  * START
  **************************************/
 renderTicker();
+renderScoreboard();
 setInterval(tickGames, CLOCK_TICK_INTERVAL);
 setInterval(randomScoreUpdates, SCORE_TICK_INTERVAL);
 setInterval(rotateGames, GAME_ROTATION_INTERVAL);
